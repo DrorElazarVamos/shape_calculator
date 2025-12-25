@@ -5,6 +5,7 @@
 #include "csvHandler.h"
 
 // --- Function Pointer Types ---
+// Note: 'vector' is already a pointer type
 typedef double (*VolumeOperation)(vector vectors[], double k);
 typedef double (*BinaryVectorOperation)(vector v1, vector v2);
 typedef vector (*CrossOperation)(vector v1, vector v2);

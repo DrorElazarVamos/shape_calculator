@@ -1,31 +1,31 @@
 #include "csvHandler.h"
-#include <math.h> 
 
 // Helper function to read a single vector from the current line's tokens
-static bool read_single_vector(CsvFile *csv, vector *v_out) {
+// Note: Expects 'v_out' to be already allocated with dimension 3
+static bool read_single_vector(CsvFile *csv, vector v_out) {
     char *field_str;
 
-    if (!csv || !v_out) return false;
+    if (!csv || !v_out || v_out->dim < 3) return false;
 
     // 1. Read X component
     field_str = csv_get_field(csv);
     if (field_str == NULL) return false;
-    v_out->direction[0] = atof(field_str);
+    v_out->val[0] = atof(field_str);
 
     // 2. Read Y component
     field_str = csv_get_field(csv);
     if (field_str == NULL) return false;
-    v_out->direction[1] = atof(field_str);
+    v_out->val[1] = atof(field_str);
 
     // 3. Read Z component
     field_str = csv_get_field(csv);
     if (field_str == NULL) return false;
-    v_out->direction[2] = atof(field_str);
+    v_out->val[2] = atof(field_str);
 
-    // 4. Read Magnitude
+    // 4. Read Magnitude (Ignored in new struct, but must be consumed from CSV)
     field_str = csv_get_field(csv);
     if (field_str == NULL) return false;
-    v_out->magnitude = atof(field_str);
+    // We do nothing with magnitude as it is calculated on demand in the new ADT
 
     return true;
 }
@@ -39,7 +39,7 @@ CsvFile* csv_open(const char *filename) {
         return NULL;
     }
 
-    csv->file_ptr =  fopen(filename, "r");
+    csv->file_ptr = fopen(filename, "r");
     if (csv->file_ptr == NULL) {
         perror("Error opening CSV file");
         free(csv); 
@@ -81,45 +81,45 @@ void csv_close(CsvFile *csv) {
     free(csv);
 }
 
-// --- Vector List Functionality Implementation (Used to satisfy linkage, but not by main) ---
+// --- Vector Set Functionality Implementation ---
 
-VectorList csv_read_vector_list(const char *filename) {
-    VectorList list = { .vectors = NULL, .count = 0 };
+vectorSet csv_read_vector_set(const char *filename) {
+    // 1. Create the Set
+    vectorSet set = cnstVectorSet();
+    if (!set) return NULL;
+
     CsvFile *file = csv_open(filename);
-
-    if (file == NULL) return list;
+    if (file == NULL) {
+        // Return empty set if file fails, or NULL depending on preference
+        return set; 
+    }
 
     csv_read_line(file); // Skip header 
 
     while (csv_read_line(file)) {
-        vector current_vector;
-        
-        // Attempt to read the FIRST vector (4 fields)
-        if (read_single_vector(file, &current_vector)) {
+        // 2. Construct a new vector for this line
+        vector current_vector = cnstVector(3); // 3D vector
+        if (!current_vector) break; // Memory fail
+
+        // Attempt to read the FIRST vector (4 fields: x, y, z, mag)
+        if (read_single_vector(file, current_vector)) {
             
-            // Skip the remaining 9 fields (V2, V3, and EXPECTED_VOLUME)
+            // Skip the remaining 9 fields (V2, V3, and EXPECTED_VOLUME) if they exist
+            // (Based on legacy logic)
             for (int i = 0; i < 9; i++) {
                 if (csv_get_field(file) == NULL) break;
             }
             
-            list.count++;
-            vector *new_vectors = realloc(list.vectors, list.count * sizeof(vector));
-            
-            if (new_vectors == NULL) {
-                fprintf(stderr, "Error: Memory reallocation failed.\n");
-                free_vector_list(&list);
-                csv_close(file);
-                return (VectorList){ .vectors = NULL, .count = 0 };
-            }
-            
-            list.vectors = new_vectors;
-            list.vectors[list.count - 1] = current_vector;
+            // 3. Add to Set
+            addToSet(set, current_vector);
 
         } else {
-            fprintf(stderr, "Warning: Skipping badly formatted line (could not read V1 data).\n");
+            // If reading failed, free the unused vector
+            dcnstVector(current_vector);
+            fprintf(stderr, "Warning: Skipping badly formatted line %d.\n", file->current_line_number);
         }
     }
 
     csv_close(file);
-    return list;
+    return set;
 }

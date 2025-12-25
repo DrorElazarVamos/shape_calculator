@@ -18,11 +18,18 @@ typedef struct {
 static bool map_4_fields_to_vector(CsvFile *file, vector *v_out);
 static bool read_test_case_row(CsvFile *file, TestCase *test_case);
 static bool vectors_are_coplanar(vector v1, vector v2, vector v3, double tolerance);
+static void free_test_case(TestCase *tc);
 
 // Helper function to check if three vectors are coplanar
 static bool vectors_are_coplanar(vector v1, vector v2, vector v3, double tolerance) {
     vector cross = crossProduct(v1, v2);
+    if (!cross) return false;
+
     double scalar_triple = scalaricProduct(cross, v3);
+    
+    // Clean up temporary vector from crossProduct
+    dcnstVector(cross); 
+    
     return fabs(scalar_triple) < tolerance;
 }
 
@@ -34,35 +41,63 @@ static bool read_test_case_row(CsvFile *file, TestCase *test_case) {
     if (!map_4_fields_to_vector(file, &test_case->v1)) return false;
 
     // --- Read V2 (4 fields) ---
-    if (!map_4_fields_to_vector(file, &test_case->v2)) return false;
+    if (!map_4_fields_to_vector(file, &test_case->v2)) {
+        dcnstVector(test_case->v1); // Cleanup partial read
+        return false;
+    }
 
     // --- Read V3 (4 fields) ---
-    if (!map_4_fields_to_vector(file, &test_case->v3)) return false;
+    if (!map_4_fields_to_vector(file, &test_case->v3)) {
+        dcnstVector(test_case->v1);
+        dcnstVector(test_case->v2);
+        return false;
+    }
     
     // --- Read Expected Volume (1 field) ---
     field_str = csv_get_field(file);
-    if (field_str == NULL) return false;
+    if (field_str == NULL) {
+        free_test_case(test_case);
+        return false;
+    }
     test_case->expected_volume = atof(field_str);
 
     return true;
 }
 
+// Helper to free vectors in a test case
+static void free_test_case(TestCase *tc) {
+    dcnstVector(tc->v1);
+    dcnstVector(tc->v2);
+    dcnstVector(tc->v3);
+}
+
 // Helper function to map 4 sequential fields into one vector struct
+// Allocates memory for the vector!
 static bool map_4_fields_to_vector(CsvFile *file, vector *v_out) {
     char *field_str;
     if (!file || !v_out) return false;
 
+    // Create a new 3D vector
+    *v_out = cnstVector(3);
+    if (*v_out == NULL) return false;
+
     // 1. Read X, Y, Z components
     for (int i = 0; i < 3; i++) {
         field_str = csv_get_field(file);
-        if (field_str == NULL) return false;
-        v_out->direction[i] = atof(field_str);
+        if (field_str == NULL) {
+            dcnstVector(*v_out); // Cleanup
+            return false;
+        }
+        (*v_out)->val[i] = atof(field_str);
     }
     
-    // 4. Read Magnitude
+    // 4. Read Magnitude (Ignored in ADT, but must be consumed from CSV)
     field_str = csv_get_field(file);
-    if (field_str == NULL) return false;
-    v_out->magnitude = atof(field_str);
+    if (field_str == NULL) {
+        dcnstVector(*v_out);
+        return false;
+    }
+    // We do not store magnitude manually in the new ADT
 
     return true;
 }
@@ -117,6 +152,10 @@ void run_volume_tests(CsvFile *csv, VolumeOperation operation, const char *test_
                        fabs(calculated_volume - expected_volume));
                 failed_count++;
             }
+
+            // Cleanup memory for this iteration
+            free_test_case(&current_test);
+
         } else {
             printf("Test %d: ERROR - Could not parse all 13 fields from the row.\n", test_count);
             error_count++;
@@ -142,7 +181,6 @@ void run_scalar_product_tests(CsvFile *csv, BinaryVectorOperation operation) {
     
     printf("\n=== Testing Scalar Product ===\n");
 
-    // Rewind file and skip header
     rewind(csv->file_ptr);
     csv->current_line_number = 0;
     if (!csv_read_line(csv)) {
@@ -156,15 +194,18 @@ void run_scalar_product_tests(CsvFile *csv, BinaryVectorOperation operation) {
         if (read_test_case_row(csv, &current_test)) {
             // Test V1 · V2
             double result_v1_v2 = operation(current_test.v1, current_test.v2);
-            printf("Test %d: V1 · V2 = %.3lf\n", test_count, result_v1_v2);
+            printf("Test %d: V1 . V2 = %.3lf\n", test_count, result_v1_v2);
             
             // Test V1 · V3
             double result_v1_v3 = operation(current_test.v1, current_test.v3);
-            printf("        V1 · V3 = %.3lf\n", result_v1_v3);
+            printf("        V1 . V3 = %.3lf\n", result_v1_v3);
             
             // Test V2 · V3
             double result_v2_v3 = operation(current_test.v2, current_test.v3);
-            printf("        V2 · V3 = %.3lf\n", result_v2_v3);
+            printf("        V2 . V3 = %.3lf\n", result_v2_v3);
+
+            free_test_case(&current_test);
+
         } else {
             printf("Test %d: ERROR - Could not parse test case\n", test_count);
             error_count++;
@@ -182,7 +223,6 @@ void run_cross_product_tests(CsvFile *csv, CrossOperation operation) {
     
     printf("\n=== Testing Cross Product ===\n");
 
-    // Rewind file and skip header
     rewind(csv->file_ptr);
     csv->current_line_number = 0;
     if (!csv_read_line(csv)) {
@@ -196,18 +236,28 @@ void run_cross_product_tests(CsvFile *csv, CrossOperation operation) {
         if (read_test_case_row(csv, &current_test)) {
             // Test V1 × V2
             vector result = operation(current_test.v1, current_test.v2);
-            printf("Test %d: V1 × V2 = [%.3lf, %.3lf, %.3lf] (mag: %.3lf)\n", 
-                   test_count, result.direction[0], result.direction[1], 
-                   result.direction[2], result.magnitude);
+            
+            // Calculate magnitude locally for display (since it's not stored anymore)
+            double mag = 0;
+            for(int i=0; i<result->dim; i++) mag += result->val[i]*result->val[i];
+            mag = sqrt(mag);
+
+            printf("Test %d: V1 x V2 = [%.3lf, %.3lf, %.3lf] (mag: %.3lf)\n", 
+                   test_count, result->val[0], result->val[1], 
+                   result->val[2], mag);
             
             // Verify perpendicularity (dot product should be ~0)
             double dot_v1 = scalaricProduct(result, current_test.v1);
             double dot_v2 = scalaricProduct(result, current_test.v2);
             
             if (fabs(dot_v1) > 0.001 || fabs(dot_v2) > 0.001) {
-                printf("        WARNING: Result not perpendicular (V1·result=%.3lf, V2·result=%.3lf)\n",
+                printf("        WARNING: Result not perpendicular (V1.result=%.3lf, V2.result=%.3lf)\n",
                        dot_v1, dot_v2);
             }
+
+            dcnstVector(result); // Free result vector
+            free_test_case(&current_test); // Free input vectors
+
         } else {
             printf("Test %d: ERROR - Could not parse test case\n", test_count);
             error_count++;

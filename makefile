@@ -1,143 +1,84 @@
 # ==============================================================================
-# Makefile for Vector & Volume Calculator
-# Author: Dror Elazar Vamos
-#
-# FINAL VERSION: Routes all object files (.o) into the dedicated 'build/' folder.
-# FIX: Structural change to resolve 'missing separator' errors on main targets.
+# Robust Makefile for Vector Calculator
+# Fixes "multiple definition of main" by separating App and Test builds.
 # ==============================================================================
 
-# Compiler and flags
+# Compiler and Flags
 CC = gcc
-# CFLAGS: Header search paths for all subdirectories.
-CFLAGS = -Wall -Wextra -std=c99 -pedantic -ItestLIB -IcsvLIB -ImodularLIB -IbitOperation -IvectorLIB -IlimitsLib
+CFLAGS = -Wall -Wextra -std=c99 -pedantic \
+         -ItestLIB -IcsvLIB -ImodularLIB -IbitOperation -IvectorLIB -IlimitsLib -Iuniversal \
+         -MMD -MP
 LDFLAGS = -lm
-DEBUG_FLAGS = -g -DDEBUG
-RELEASE_FLAGS = -O2
 
-# Target executable
-TARGET = calculator
-# NEW: Directory for all object files
+# Build Directory
 BUILD_DIR = build
 
-# Source directories for VPATH (tells 'make' where to look for source/header files)
-VPATH = testLIB:csvLIB:modularLIB:bitOperation:vectorLIB.
+# --- SOURCE CONFIGURATION ---
 
-# Source files (just the filenames)
-SOURCES = main.c \
-          testerFile.c \
-          csvHandler.c \
-          modular.c \
-          bitOperation.c \
-          vectorOps.c 
+# 1. Directories to search
+SRC_DIRS = . vectorLIB csvLIB universal modularLIB testLIB bitOperation
 
-# UPDATED: Object files now include the path to the build directory (e.g., build/main.o)
-OBJECTS = $(addprefix $(BUILD_DIR)/, $(SOURCES:.c=.o))
+# 2. Find ALL .c files in those directories
+ALL_SRCS := $(foreach dir,$(SRC_DIRS),$(wildcard $(dir)/*.c))
 
-# Default target
-all: $(TARGET)
+# 3. Separate the files with 'main()' functions from the common library files
+#    We filter OUT files ending in main.c, unit_test_runner.c, or system_test_run.c
+LIB_SRCS := $(filter-out %main.c %unit_test_runner.c %system_test_run.c, $(ALL_SRCS))
 
-# Build the executable (Depends on all object files and the preparation target)
-$(TARGET): $(OBJECTS) | prepare_build_dir
-	@echo "Linking $(TARGET)..."
-	$(CC) $(OBJECTS) -o $(TARGET) $(LDFLAGS)
-	@echo "Build complete: $(TARGET)"
+# 4. Define Object files
+#    Library Objects (Math, CSV, Logic)
+LIB_OBJS := $(addprefix $(BUILD_DIR)/,$(notdir $(LIB_SRCS:.c=.o)))
 
-# TARGET TO CREATE BUILD DIRECTORY (Uses order-only prerequisite '|' above)
+#    Entry Point Objects (The 3 different main files)
+MAIN_OBJ := $(BUILD_DIR)/main.o
+UNIT_TEST_OBJ := $(BUILD_DIR)/unit_test_runner.o
+SYSTEM_TEST_OBJ := $(BUILD_DIR)/system_test_run.o
+
+# 5. Tell Make where to find source files
+vpath %.c $(SRC_DIRS)
+
+# --- BUILD TARGETS ---
+
+# Default: Build everything
+all: calculator unit_test system_test
+
+# 1. The Main Calculator App
+calculator: $(LIB_OBJS) $(MAIN_OBJ) | prepare_build_dir
+	@echo "Linking Calculator..."
+	$(CC) $(LIB_OBJS) $(MAIN_OBJ) -o calculator $(LDFLAGS)
+	@echo "Build complete: calculator"
+
+# 2. The Unit Test Runner
+unit_test: $(LIB_OBJS) $(UNIT_TEST_OBJ) | prepare_build_dir
+	@echo "Linking Unit Tests..."
+	$(CC) $(LIB_OBJS) $(UNIT_TEST_OBJ) -o unit_test $(LDFLAGS)
+	@echo "Build complete: unit_test"
+
+# 3. The System Test Runner
+system_test: $(LIB_OBJS) $(SYSTEM_TEST_OBJ) | prepare_build_dir
+	@echo "Linking System Tests..."
+	$(CC) $(LIB_OBJS) $(SYSTEM_TEST_OBJ) -o system_test $(LDFLAGS)
+	@echo "Build complete: system_test"
+
+# Create build directory
 prepare_build_dir:
 	@mkdir -p $(BUILD_DIR)
 
-# Compile source files to object files (Pattern Rule)
-# The target $@ is now $(BUILD_DIR)/filename.o (e.g., build/main.o)
+# Compile source files
 $(BUILD_DIR)/%.o: %.c | prepare_build_dir
 	@echo "Compiling $<..."
 	$(CC) $(CFLAGS) -c $< -o $@
 
-# Debug build
-debug: CFLAGS += $(DEBUG_FLAGS)
-debug: clean prepare_build_dir $(TARGET)
-	@echo "Debug build complete"
+# Include dependency files
+-include $(LIB_OBJS:.o=.d) $(MAIN_OBJ:.o=.d) $(UNIT_TEST_OBJ:.o=.d) $(SYSTEM_TEST_OBJ:.o=.d)
 
-# Release build (optimized)
-release: CFLAGS += $(RELEASE_FLAGS)
-release: clean prepare_build_dir $(TARGET)
-	@echo "Release build complete"
-
-# Run the program
-run: $(TARGET)
-	@echo "Running $(TARGET)..."
-	./$(TARGET)
-
-# Run with test file
-test: $(TARGET)
-	@echo "Running automated tests..."
-	@if [ -f comprehensive_test_cases.csv ]; then \
-		./$(TARGET); \
-	else \
-		echo "Error: comprehensive_test_cases.csv not found"; \
-	fi
-
-check:
-	@echo "Checking for required files..."
-	@for file in $(SOURCES); do \
-		if [ ! -f $$file ] && \
-		   [ ! -f testLIB/$$file ] && \
-		   [ ! -f csvLIB/$$file ] && \
-		   [ ! -f modularLIB/$$file ] && \
-		   [ ! -f bitOperation/$$file ] && \
-		   [ ! -f vectorLIB/$$file ] && \
-		   [ ! -f limitsLib/$$file ] && \  <-- ADD THIS LINE
-		   [ ! -f ./$$file ]; then \
-			echo "Warning: $$file not found in any expected directory"; \
-		fi; \
-	done
-	@echo "Check complete"
-
-# Clean build artifacts
+# Clean
 clean:
-	@echo "Cleaning build artifacts..."
-	rm -rf $(BUILD_DIR) $(TARGET)
-	@echo "Clean complete"
+	@echo "Cleaning artifacts..."
+	rm -rf $(BUILD_DIR) calculator unit_test system_test
 
-# Clean everything including backup files
-distclean: clean
-	@echo "Removing backup and temporary files..."
-	rm -f *~ *.bak *.swp core
+# Helper to run the main app
+run: calculator
+	./calculator
 
-# Install (copy to /usr/local/bin - requires sudo)
-install: $(TARGET)
-	@echo "Installing $(TARGET)..."
-	install -m 0755 $(TARGET) /usr/local/bin
-	@echo "Installation complete"
-
-# Uninstall
-uninstall:
-	@echo "Uninstalling $(TARGET)..."
-	rm -f /usr/local/bin/$(TARGET)
-	@echo "Uninstall complete"
-
-# Show help
-help:
-	@echo "Available targets:"
-	@echo "  all       - Build the project (default)"
-	@echo "  debug     - Build with debug symbols"
-	@echo "  release   - Build optimized release version"
-	@echo "  run       - Build and run the program"
-	@echo "  test      - Run automated test suite"
-	@echo "  clean     - Remove object files and executable"
-	@echo "  distclean - Remove all generated files"
-	@echo "  install   - Install to /usr/local/bin (requires sudo)"
-	@echo "  uninstall - Remove from /usr/local/bin"
-	@echo "  help      - Show this help message"
-
-# Check for missing source files
-check:
-	@echo "Checking for required files..."
-	@for file in $(SOURCES); do \
-		if [ ! -f $$file ] && [ ! -f testLIB/$$file ] && [ ! -f csvLIB/$$file ] && [ ! -f modularLIB/$$file ] && [ ! -f bitOperation/$$file ] && [ ! -f vectorLIB/$$file ] && [ ! -f ./$$file ]; then \
-			echo "Warning: $$file not found in any expected directory"; \
-		fi; \
-	done
-	@echo "Check complete"
-
-# Phony targets (not actual files)
-.PHONY: all debug release run test clean distclean install uninstall help check prepare_build_dir
+.PHONY: all clean run prepare_build_dir

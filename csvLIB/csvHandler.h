@@ -5,7 +5,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include <stdbool.h>
-#include "vectorOps.h"
+#include "vectorOps.h" // Includes vector, vectorSet definitions
 
 #define MAX_LINE_LENGTH 1024
 
@@ -46,10 +46,11 @@ char* csv_get_field(CsvFile *csv);
 void csv_close(CsvFile *csv);
 
 /**
- * @brief Reads a list of vectors from CSV file (legacy function)
+ * @brief Reads a set of vectors from CSV file.
+ * Assumes the first 3 columns are X, Y, Z and the 4th is Magnitude (ignored).
  * @param filename Path to the CSV file
- * @return VectorList structure with vectors
+ * @return vectorSet structure containing the vectors
  */
-VectorList csv_read_vector_list(const char *filename);
+vectorSet csv_read_vector_set(const char *filename);
 
 #endif // CSV_HANDLER_H

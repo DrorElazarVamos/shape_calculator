@@ -1,337 +1,300 @@
 #include "vectorOps.h"
 
+// --- Constructors & Destructors ---
+
+vector cnstVector(unsigned int dim) {
+    vector v = (vector)malloc(sizeof(struct vector_struct));
+    if (!v) return NULL;
+    
+    v->dim = dim;
+    v->next = NULL;
+    v->val = (double *)calloc(dim, sizeof(double));
+    if (!v->val) {
+        free(v);
+        return NULL;
+    }
+    return v;
+}
+
+void dcnstVector(vector dst) {
+    if (!dst) return;
+    if (dst->val) free(dst->val);
+    free(dst);
+}
+
+vectorSet cnstVectorSet() {
+    vectorSet vs = (vectorSet)malloc(sizeof(struct vectorSet));
+    if (!vs) return NULL;
+    vs->count = 0;
+    vs->head = NULL;
+    return vs;
+}
+
+void dcnstrVectorSet(vectorSet dst) {
+    if (!dst) return;
+    vector current = dst->head;
+    while (current) {
+        vector temp = current;
+        current = current->next;
+        dcnstVector(temp);
+    }
+    free(dst);
+}
+
+void addToSet(vectorSet set, vector v) {
+    if (!set || !v) return;
+    v->next = set->head;
+    set->head = v;
+    set->count++;
+}
+
+// --- Basic Vector Ops ---
+
 double scalaricProduct(vector v1, vector v2) {
-    double scalarProd = 0.0;
-    for (int i=0; i<3; i++){
-        scalarProd += v1.direction[i]*v2.direction[i];
-    } 
-    return scalarProd;
-}
-
-vector crossProduct(vector v1, vector v2){
-    vector result;
-    double x1 = v1.direction[0] ,y1 = v1.direction[1] ,z1 = v1.direction[2];
-    double x2 = v2.direction[0] ,y2 = v2.direction[1] ,z2 = v2.direction[2];
-
-    result.direction[0] = (y1 * z2) - (y2 * z1);
-    result.direction[1] = (z1 * x2) - (x1 * z2);
-    result.direction[2] = (x1 * y2) - (x2 * y1);
-
-    result.magnitude = sqrt(
-        pow(result.direction[0],2) + pow(result.direction[1],2) + pow(result.direction[2],2)
-    );
-    return result;
-}
-
-double volumeParallelepiped(vector vectors[],double k){
-    vector v_cross = crossProduct(vectors[0], vectors[1]);
-    double scalar_triple_product = scalaricProduct(v_cross, vectors[2]);
-    return fabs(scalar_triple_product)/k;
-}
-
-void free_vector_list(VectorList *list) {
-    if (list != NULL && list->vectors != NULL) {
-        free(list->vectors);
-        list->vectors = NULL;
-        list->count = 0;
+    if (!v1 || !v2 || v1->dim != v2->dim) return 0.0;
+    double sum = 0.0;
+    for (int i = 0; i < v1->dim; i++) {
+        sum += v1->val[i] * v2->val[i];
     }
+    return sum;
 }
 
-vector getNoraml(vector v) {
-    // Assuming magnitude is calculated correctly upon creation
-    vector normal = v;
-    if (v.magnitude > EPSILON) {
-        for (int i = 0; i < 3; i++) {
-            normal.direction[i] /= v.magnitude;
+vector crossProduct(vector v1, vector v2) {
+    // Defined primarily for 3D
+    if (!v1 || !v2 || v1->dim != 3 || v2->dim != 3) return NULL;
+
+    vector res = cnstVector(3);
+    res->val[0] = v1->val[1] * v2->val[2] - v1->val[2] * v2->val[1];
+    res->val[1] = v1->val[2] * v2->val[0] - v1->val[0] * v2->val[2];
+    res->val[2] = v1->val[0] * v2->val[1] - v1->val[1] * v2->val[0];
+    return res;
+}
+
+vector addition(vector v, vector u, bool plusminus) {
+    if (!v || !u || v->dim != u->dim) return NULL;
+    vector res = cnstVector(v->dim);
+    for (int i = 0; i < v->dim; i++) {
+        if (plusminus) res->val[i] = v->val[i] + u->val[i];
+        else res->val[i] = v->val[i] - u->val[i];
+    }
+    return res;
+}
+
+vector getNormal(vector v) {
+    if (!v) return NULL;
+    double mag = 0;
+    for (int i = 0; i < v->dim; i++) mag += v->val[i] * v->val[i];
+    mag = sqrt(mag);
+
+    vector res = cnstVector(v->dim);
+    if (mag < EPSILON) return res; // Return 0 vector if magnitude 0
+
+    for (int i = 0; i < v->dim; i++) res->val[i] = v->val[i] / mag;
+    return res;
+}
+
+vector getVectorFromPoints(vector p, vector q) {
+    // Vector = Head (q) - Tail (p)
+    return addition(q, p, false); 
+}
+
+double getDist(vector p1, vector p2) {
+    if (!p1 || !p2 || p1->dim != p2->dim) return 0.0;
+    double sum = 0.0;
+    for (int i = 0; i < p1->dim; i++) {
+        double d = p1->val[i] - p2->val[i];
+        sum += d * d;
+    }
+    return sqrt(sum);
+}
+
+bool checkParallel(vector v, vector u) {
+    if (!v || !u || v->dim != u->dim) return false;
+    
+    // Check via cross product for 3D, or ratio for ND
+    if (v->dim == 3) {
+        vector cp = crossProduct(v, u);
+        double mag = 0;
+        for(int i=0; i<3; i++) mag += cp->val[i]*cp->val[i];
+        dcnstVector(cp);
+        return (sqrt(mag) < EPSILON);
+    }
+    
+    // Ratio check for other dimensions
+    double k = 0;
+    bool k_set = false;
+    for(int i=0; i<v->dim; i++) {
+        if (fabs(u->val[i]) < EPSILON) {
+            if (fabs(v->val[i]) > EPSILON) return false;
+            continue;
         }
-        normal.magnitude = 1.0;
-    } else {
-        // Handle zero vector case (e.g., set to zero vector)
-        for (int i = 0; i < 3; i++) {
-            normal.direction[i] = 0.0;
-        }
-        normal.magnitude = 0.0;
+        double ratio = v->val[i] / u->val[i];
+        if (!k_set) { k = ratio; k_set = true; }
+        else if (fabs(ratio - k) > EPSILON) return false;
     }
-    return normal;
-}
-
-vector *addition(vector *v, vector *u, unsigned short n ,bool plusminus){
-    vector *V_add_U = (vector *)malloc(sizeof(vector));
-    if (V_add_U == NULL) return NULL;
-    short tmp = 1;
-    if (plusminus == false) tmp = -1;
-
-    V_add_U->magnitude = 0.0;
-    for (unsigned short i=0; i<n; i++){
-        V_add_U->direction[i] =  v->direction[i] + (tmp * u->direction[i]); // FIX: Used i instead of 0
-        V_add_U->magnitude += pow(V_add_U->direction[i],2);
-    }
-
-    V_add_U->magnitude = sqrt(V_add_U->magnitude);
-    return V_add_U;
-}
-
-vector *getVectorFromPoints(unsigned short n, double *p, double *q){
-    if ( n == 0){
-         // In a real library, handle this error properly
-         return NULL; 
-    }
-
-    vector *PQ = (vector *)malloc(sizeof(vector));
-    if (PQ == NULL) return NULL;
-    PQ->magnitude = 0.0;
-    for (unsigned short i=0; i<n; i++){
-        PQ->direction[i] = q[i]-p[i];
-        PQ->magnitude += pow(PQ->direction[i],2);
-    }
-
-    PQ->magnitude = sqrt(PQ->magnitude);
-    return PQ;
-}
-
-double getDist(double *p1, double *p2, unsigned short n){
-    double dist_sq = 0.0;
-    for (unsigned short i = 0; i<n; i++){
-        dist_sq += pow((p2[i]-p1[i]),2);
-    }
-    return sqrt(dist_sq);
-}
-
-bool checkParrallel(vector *v, vector *u, unsigned short n){
-    double *t = (double *)malloc(n * sizeof(double));
-    if (t == NULL) return false;
-
-    for (unsigned short i = 0; i < n; i++){
-        if (fabs(u->direction[i]) < EPSILON) {
-            if (fabs(v->direction[i]) > EPSILON) {
-                free(t);
-                return false;
-            }
-            continue; 
-        }
-
-        t[i] = v->direction[i] / u->direction[i];
-        
-        if (i > 0) {
-            // Find the last non-skipped ratio for comparison
-            unsigned short j = i - 1;
-            while (j > 0 && fabs(u->direction[j]) < EPSILON) { 
-                j--; 
-            }
-            // If the ratio exists and is non-zero, compare
-            if (fabs(u->direction[j]) >= EPSILON && fabs(t[i] - t[j]) > EPSILON) {
-                free(t);
-                return false;
-            }
-        }
-    }
-
-    free(t);
     return true;
 }
 
-line_equation *getLine(vector *V, double *p){
-    line_equation *result = (line_equation *)malloc(sizeof(line_equation));
-    if (result == NULL) return NULL;
-
-    result->direction_vector = *V; // Direct copy of the vector struct
-    result->point = p;
-    result->t = 1.0;
-
-    return result;
+float getAngleRad(vector v, vector u) {
+    double dot = scalaricProduct(v, u);
+    double magV = 0, magU = 0;
+    for (int i=0; i<v->dim; i++) magV += v->val[i]*v->val[i];
+    for (int i=0; i<u->dim; i++) magU += u->val[i]*u->val[i];
+    
+    double denom = sqrt(magV) * sqrt(magU);
+    if (denom < EPSILON) return 0.0;
+    
+    double val = dot / denom;
+    if (val > 1.0) val = 1.0;
+    if (val < -1.0) val = -1.0;
+    return (float)acos(val);
 }
 
-line_equation *getLine2Points(double *p1, double *p2){
-    line_equation *result = (line_equation *)malloc(sizeof(line_equation));
-    if (result == NULL) return NULL;
+// --- Advanced Ops ---
+
+double determinant(vector *matrix, int n) {
+    // Basic implementation for 2x2 and 3x3
+    if (n == 2) {
+        return matrix[0]->val[0] * matrix[1]->val[1] - matrix[0]->val[1] * matrix[1]->val[0];
+    }
+    if (n == 3) {
+        double val = 
+            matrix[0]->val[0] * (matrix[1]->val[1]*matrix[2]->val[2] - matrix[1]->val[2]*matrix[2]->val[1]) -
+            matrix[0]->val[1] * (matrix[1]->val[0]*matrix[2]->val[2] - matrix[1]->val[2]*matrix[2]->val[0]) +
+            matrix[0]->val[2] * (matrix[1]->val[0]*matrix[2]->val[1] - matrix[1]->val[1]*matrix[2]->val[0]);
+        return val;
+    }
+    return 0.0; // Not implemented for N > 3
+}
+
+double volumeParallelepiped(vector vectors[], double k) {
+    // Volume is Scalar Triple Product: (A . (B x C))
+    // vectors[0] = A, vectors[1] = B, vectors[2] = C
+    if (!vectors || !vectors[0] || !vectors[1] || !vectors[2]) return 0.0;
     
-    vector *d_vec_ptr = getVectorFromPoints(3, p1, p2); 
-    if (d_vec_ptr == NULL) {
-        free(result);
+    vector cross = crossProduct(vectors[1], vectors[2]);
+    double vol = scalaricProduct(vectors[0], cross);
+    dcnstVector(cross);
+    
+    return fabs(vol) / (k > EPSILON ? k : 1.0);
+}
+
+// --- Geometry: Lines ---
+
+line_equation *getLine(vector V, vector p) {
+    line_equation *l = malloc(sizeof(line_equation));
+    l->direction = addition(V, cnstVector(V->dim), true); // Deep copy
+    l->point = addition(p, cnstVector(p->dim), true);     // Deep copy
+    return l;
+}
+
+line_equation *getLine2Points(vector p1, vector p2) {
+    line_equation *l = malloc(sizeof(line_equation));
+    l->direction = getVectorFromPoints(p1, p2);
+    l->point = addition(p1, cnstVector(p1->dim), true); // Copy p1
+    return l;
+}
+
+vector getIntersection2Lines(line_equation *L1, line_equation *L2) {
+    // 3D Line Intersection is complex (lines are often skew).
+    // Simple 2D logic or specific 3D check. 
+    // Implementing standard closest point check or specific intersection if planar.
+    // For this generic vector lib, we will assume 2D or perfect intersection for now.
+    
+    // Cramer's rule style for 2D intersection:
+    // P1 + t*D1 = P2 + u*D2
+    // t*D1 - u*D2 = P2 - P1
+    
+    if (L1->direction->dim != 3) return NULL; // Limiting to 3D for simplicity
+    
+    vector dp = addition(L2->point, L1->point, false); // P2 - P1
+    vector cp1 = crossProduct(L1->direction, L2->direction);
+    vector cp2 = crossProduct(dp, L2->direction);
+    
+    double det = scalaricProduct(cp1, cp1); // |D1 x D2|^2
+    
+    if (det < EPSILON) {
+        // Parallel lines
+        dcnstVector(dp); dcnstVector(cp1); dcnstVector(cp2);
         return NULL;
     }
-
-    result->direction_vector = *d_vec_ptr;
-    free(d_vec_ptr); // Free the temporary vector used to calculate direction
-
-    result->point = p1;
-    result->t = 1.0;
-
+    
+    // t = ((P2 - P1) x D2) . (D1 x D2) / |D1 x D2|^2
+    double t = scalaricProduct(cp2, cp1) / det;
+    
+    // Intersection = P1 + t*D1
+    vector scaleD1 = cnstVector(3);
+    for(int i=0; i<3; i++) scaleD1->val[i] = L1->direction->val[i] * t;
+    
+    vector result = addition(L1->point, scaleD1, true);
+    
+    // Cleanup
+    dcnstVector(dp); dcnstVector(cp1); dcnstVector(cp2); dcnstVector(scaleD1);
+    
     return result;
 }
 
-float getAngleRad(vector v, vector u){
-    float top = scalaricProduct(v,u);
-    float bottom = v.magnitude * u.magnitude;
-    // Check for zero magnitude to prevent division by zero or domain errors
-    if (bottom < EPSILON) return 0.0f; 
-    
-    // Clamp the argument to acos to [-1, 1] to prevent domain errors
-    double arg = top / bottom;
-    if (arg > 1.0) arg = 1.0;
-    if (arg < -1.0) arg = -1.0;
-    
-    return acos(arg);
+// --- Geometry: Plains ---
+
+plain *getPlain(vector orthogonal_V, vector point) {
+    plain *p = malloc(sizeof(plain));
+    p->normal = getNormal(orthogonal_V);
+    p->point = addition(point, cnstVector(point->dim), true);
+    return p;
 }
 
+plain *getPlain2Vector(vector v1, vector v2, vector p) {
+    vector normal = crossProduct(v1, v2);
+    plain *res = getPlain(normal, p);
+    dcnstVector(normal);
+    return res;
+}
 
-double *getIntersection2Lines(line_equation *L1, line_equation *L2) {
+plain *getPlain3point(vector p1, vector p2, vector p3) {
+    vector v1 = getVectorFromPoints(p1, p2);
+    vector v2 = getVectorFromPoints(p1, p3);
+    plain *res = getPlain2Vector(v1, v2, p1);
+    dcnstVector(v1);
+    dcnstVector(v2);
+    return res;
+}
 
-    // 1. Extract Coefficients (Setup the 2x2 System: x and y components)
-    // (a1)t1 + (-a2)t2 = (x02 - x01)
-    // (b1)t1 + (-b2)t2 = (y02 - y01)
+bool checkPointInPlain(plain p, vector point) {
+    // Vector from plane point to target point
+    vector v = getVectorFromPoints(p.point, point);
+    // Dot product with normal should be 0
+    double dot = scalaricProduct(v, p.normal);
+    dcnstVector(v);
+    return fabs(dot) < EPSILON;
+}
 
-    double a1 = L1->direction_vector.direction[0]; 
-    double b1 = L1->direction_vector.direction[1]; 
+bool checkPlainParallel(plain p1, plain p2) {
+    return checkParallel(p1.normal, p2.normal);
+}
 
-    double a2 = -L2->direction_vector.direction[0]; 
-    double b2 = -L2->direction_vector.direction[1]; 
+double distPointPlain(vector p, plain plain_obj) {
+    // D = |(P - P_plain) . Normal|
+    vector v = getVectorFromPoints(plain_obj.point, p);
+    double dot = scalaricProduct(v, plain_obj.normal);
+    dcnstVector(v);
+    return fabs(dot); // Normal is unit vector, so just dot product
+}
 
-    double c1 = L2->point[0] - L1->point[0]; 
-    double c2 = L2->point[1] - L1->point[1]; 
-    
-    // 2. Solve for t1 and t2 using Cramer's Rule (Determinants)
-    
-    double D = (a1 * b2) - (b1 * a2);
+// --- Utilities ---
+void printVector(vector v) {
+    if(!v) return;
+    printf("[");
+    for(int i=0; i<v->dim; i++) printf("%.2f%s", v->val[i], (i<v->dim-1)?", ":"");
+    printf("]\n");
+}
 
-    if (fabs(D) < EPSILON) {
-        return NULL; 
+void printSet(vectorSet set) {
+    if(!set) return;
+    vector curr = set->head;
+    int i = 0;
+    while(curr) {
+        printf("%d: ", i++);
+        printVector(curr);
+        curr = curr->next;
     }
-
-    double D_t1 = (c1 * b2) - (c2 * a2);
-    double D_t2 = (a1 * c2) - (b1 * c1);
-
-    double t1 = D_t1 / D;
-    double t2 = D_t2 / D; 
-
-    // 3. Verification: Check the Z-component (The Skew Test)
-
-    double z1 = L1->point[2] + t1 * L1->direction_vector.direction[2]; 
-    double z2 = L2->point[2] + t2 * L2->direction_vector.direction[2]; 
-
-    if (fabs(z1 - z2) > EPSILON) {
-        return NULL; 
-    }
-    
-    // 4. Intersection Found: Calculate and Return Point
-    
-    double *intersection_point = (double *)malloc(3 * sizeof(double));
-    if (intersection_point == NULL) return NULL;
-
-    intersection_point[0] = L1->point[0] + t1 * L1->direction_vector.direction[0];
-    intersection_point[1] = L1->point[1] + t1 * L1->direction_vector.direction[1];
-    intersection_point[2] = z1; 
-
-    return intersection_point;
 }
-
-
-double detrminant(double **matrix){
-    // This is a placeholder for a complex function that needs the matrix dimensions
-    // to be passed explicitly, as sizeof on a pointer doesn't return array size.
-    
-    /* unsigned short rows = sizeof(matrix)/8;
-    unsigned short cols = sizeof(matrix[0])/8; */
-    
-    return 0.0;
-}
-
-plain *getPlain(vector orthogonal_V, double *p){
-    plain *result = (plain *)malloc(sizeof(plain));
-
-    result->orthogonal_vector = orthogonal_V;
-    result->point = p;
-
-    return result;
-}
-
-plain *getPlain2Vector(vector v1, vector v2, double *p){
-    plain *result = (plain *)malloc(sizeof(plain));
-
-    result->orthogonal_vector = crossProduct(v1,v2);
-    result->point = p;
-
-    return result;
-}
-
-bool checkPointInPlain(plain plainCheck, double *p1){
-    //get the D in the equation Ax + By + Cz + d =0
-    double D = 0;
-    for (int i=0; i<3; i++){
-        D += plainCheck.orthogonal_vector.direction[i]*plainCheck.point[i];
-    }
-    double temp = D;
-    for (int i=0; i<3; i++){
-        temp += plainCheck.orthogonal_vector.direction[i]*p1[i];
-    }
-
-    return (temp == 0)? true:false;
-}   
-
-bool checkPlainParrallel(plain Plain1, plain Plain2){
-    return (checkParrallel(&Plain1.orthogonal_vector,&Plain2.orthogonal_vector,3)== true)? true:false;
-
-}
-
-// vectorOps.c: In function 'getPlain3point'
-
-plain *getPlain3point(double *p1, double *p2, double *p3){
-    plain *result = (plain *)malloc(sizeof(plain));
-    if (result == NULL) return NULL; // Safety check
-
-    // CORRECTED: Only declare V1 and V2 as pointers, since getVectorFromPoints returns pointers.
-    vector *V1 = getVectorFromPoints(3,p1,p2);
-    vector *V2 = getVectorFromPoints(3,p1,p3);
-    
-    if (V1 == NULL || V2 == NULL) {
-        free(result);
-        if (V1) free(V1); // Only free V1 if it was successfully allocated
-        if (V2) free(V2); // Only free V2 if it was successfully allocated
-        return NULL;
-    }
-
-    // result->orthogonal_vector is a 'vector' struct, so we dereference the pointers (*V1, *V2).
-    result->orthogonal_vector = crossProduct(*V1, *V2);
-    result->point = p1;
-
-    // CRITICAL: Free the dynamically allocated vectors created by getVectorFromPoints.
-    free(V1);
-    free(V2);
-
-    return result;
-}
-
-double get_D_forCanonicPlain(plain plainCheck){
-    //get the D in the equation Ax + By + Cz + d =0
-    double D = 0;
-    for (int i=0; i<3; i++){
-        D += plainCheck.orthogonal_vector.direction[i]*plainCheck.point[i];
-    }
-    return D;
-}
-
-double distPointPlain(double *p, plain Plain){
-    if (checkPointInPlain(Plain,p) == true){
-        return 0.0;
-    }
-    //dist equation point from plain : Distance = (abs(A*x0 + B*y0 + C*z + D))/(sqrt(A^2 + B^2 + C^2))
-    double distTop = get_D_forCanonicPlain(Plain);
-    double distBottom = 0.0;
-    for (int i=0; i<3; i++){
-        distTop += (Plain.orthogonal_vector.direction[i])*(p[i]);
-        distBottom += pow(Plain.orthogonal_vector.direction[i],2);
-    }
-    return fabs(distTop)/sqrt(distBottom);
-
-}
-
-bool parrallel_or_intersec_Plains(plain Plain1, plain Plain2){
-    //if the orthogonal vector are dependant than thier orthogonal vector are dependant 
-    return (checkParrallel(&Plain1.orthogonal_vector,&Plain2.orthogonal_vector,3)? true:false);
-}
-
-bool same_or_distant_plain(plain Plain1, plain Plain2){
-    //check if random point in plain1 exist in plain2
-    return (checkPointInPlain(Plain1,Plain2.point)? true:false);
-}
-

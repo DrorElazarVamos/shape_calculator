@@ -1,173 +1,135 @@
 #ifndef VECTOROPS_H
 #define VECTOROPS_H
 
-#define EPSILON 1e-6
-
 #include <stdio.h>
 #include <math.h>
 #include <stdlib.h>
 #include <stdbool.h>
 
+#define EPSILON 1e-6
 #define PI 3.1415
 
 // --- Data Structures ---
 
-typedef struct {
-    double direction[3];
-    double magnitude;
-} vector;
-
-typedef struct {
-    vector *vectors; // Dynamic array of vectors
-    size_t count;    // Number of vectors in the array
-} VectorList;
-
-typedef struct {
-    double *point; // The coordinates of a point the line goes through (p0)
-    double t; // Scalar parameter (often unused in the struct itself, but part of the math)
-    vector direction_vector; // The direction vector of the line (d)
-} line_equation;
-
-typedef struct {
-    vector orthogonal_vector;
-    double *point;
-} plain;
-
-typedef struct {
-    vector base_vector1;
-    vector base_vector2;
-    double *point;
-} plainVectoric;
-
-// --- Function Prototypes ---
+// Forward declaration
+struct vector_struct;
 
 /**
- * @brief Calculates the scalar (dot) product of 2 given vectors.
- * @param v1 vector 1
- * @param v2 vector 2
- * @return scalar product of the 2 vectors
+ * @brief Main Vector ADT.
+ * Defined as a pointer to the struct to allow easy passing by reference.
+ */
+typedef struct vector_struct {
+    unsigned int dim : 4;       // Increased to 4 bits to allow dimensions up to 15 (3 bits maxes at 7)
+    double *val;                // Dynamic array of values
+    struct vector_struct *next; // Linked list pointer for the Set
+} *vector;
+
+typedef struct vectorSet {
+    vector head;        // Head of the linked list
+    unsigned int count; // Number of vectors in set
+} *vectorSet;
+
+// Geometry Structures
+typedef struct line_equation {
+    vector direction;
+    vector point;
+} line_equation;
+
+typedef struct plain {
+    vector normal;
+    vector point; // A point on the plane
+} plain;
+
+// --- Constructors & Memory Management ---
+
+vector cnstVector(unsigned int dim);
+void dcnstVector(vector dst);
+
+vectorSet cnstVectorSet();
+void dcnstrVectorSet(vectorSet dst);
+void addToSet(vectorSet set, vector v);
+
+// --- Basic Vector Operations ---
+
+/** * @brief Calculates scalar (dot) product. 
  */
 double scalaricProduct(vector v1, vector v2);
 
-/**
- * @brief Calculates the cross product of 2 given vectors (the orthogonal vector).
- * @param v1 vector 1
- * @param v2 vector 2
- * @return cross product of the 2 vectors
+/** * @brief Calculates cross product (Orthogonal vector). Only for 3D. 
  */
 vector crossProduct(vector v1, vector v2);
 
-/**
- * @brief Calculates the volume of a parallelepiped (Scalar Triple Product).
- * @param vectors[] the three direction vectors of the parallelepiped
- * @param k is the constant for the shape (divisor for the volume formula)
- * @return volume
+/** * @brief Vector addition or subtraction.
+ * @param plusminus true for (+), false for (-).
  */
-double volumeParallelepiped(vector vectors[], double k);
+vector addition(vector v, vector u, bool plusminus);
 
-/**
- * @brief Frees the dynamically allocated memory used by the VectorList.
- * @param list The VectorList to clean up.
+/** * @brief Returns the normalized (unit) vector. 
  */
-void free_vector_list(VectorList *list);
+vector getNormal(vector v); 
 
-/**
- * @brief Calculates the normal vector (unit vector of the same direction) of a given vector.
- * @param v The input vector.
- * @return The normal vector.
+/** * @brief Creates a vector from Point P to Point Q (Q - P). 
  */
-vector getNoraml(vector v);
+vector getVectorFromPoints(vector p, vector q);
 
-/**
- * @brief Calculates the addition or subtraction of two vectors.
- * @param v Vector 1.
- * @param u Vector 2.
- * @param n Dimension of the vectors (should be 3 for the current struct).
- * @param plusminus True for addition (+), False for subtraction (-).
- * @return A dynamically allocated vector result.
+/** * @brief Euclidean distance between two vectors/points. 
  */
-vector *addition(vector *v, vector *u, unsigned short n ,bool plusminus);
+double getDist(vector p1, vector p2);
 
-/**
- * @brief Creates a vector from two points (q - p).
- * @param n Dimension of the points.
- * @param p Starting point coordinates.
- * @param q Ending point coordinates.
- * @return A dynamically allocated vector from P to Q.
+/** * @brief Checks if vectors are parallel. 
  */
-vector *getVectorFromPoints(unsigned short n, double *p, double *q);
+bool checkParallel(vector v, vector u);
 
-/**
- * @brief Calculates the Euclidean distance between two points.
- * @param p1 Point 1 coordinates.
- * @param p2 Point 2 coordinates.
- * @param n Dimension of the points.
- * @return The distance between p1 and p2.
- */
-double getDist(double *p1, double *p2, unsigned short n);
-
-/**
- * @brief Checks if two vectors are parallel by comparing the ratio of their components.
- * @param v Vector 1.
- * @param u Vector 2.
- * @param n Dimension of the vectors (should be 3 for the current struct).
- * @return True if parallel, False otherwise (uses EPSILON for safety).
- */
-bool checkParrallel(vector *v, vector *u, unsigned short n);
-
-/**
- * @brief Creates a line equation from a direction vector and a point.
- * @param V The direction vector.
- * @param p The point coordinates.
- * @return A dynamically allocated line_equation structure.
- */
-line_equation *getLine(vector *V, double *p);
-
-/**
- * @brief Creates a line equation from two points (p1 as the base point, p2-p1 as direction).
- * @param p1 Point 1 (base point).
- * @param p2 Point 2.
- * @return A dynamically allocated line_equation structure.
- */
-line_equation *getLine2Points(double *p1, double *p2);
-
-/**
- * @brief Calculates the angle in radians between two vectors using the dot product formula.
- * @param v Vector 1.
- * @param u Vector 2.
- * @return The angle in radians.
+/** * @brief Angle in radians between two vectors. 
  */
 float getAngleRad(vector v, vector u);
 
-/**
- * @brief Finds the intersection point of two 3D lines (L1 and L2).
- * @param L1 Pointer to the first line_equation.
- * @param L2 Pointer to the second line_equation.
- * @return A dynamically allocated double array {x, y, z} if intersection exists, or NULL if parallel/skew.
+// --- Advanced Operations ---
+
+/** * @brief Scalar Triple Product volume. 
  */
-double *getIntersection2Lines(line_equation *L1, line_equation *L2); // Corrected prototype to use pointers
+double volumeParallelepiped(vector vectors[], double k);
 
-/**
- * @brief Placeholder for a determinant calculation function (not fully implemented in the .c file).
- * @param matrix A pointer to the matrix data.
- * @return The determinant value.
+/** * @brief Calculates determinant of a matrix (helper for volume/intersection).
+ * @param matrix Square matrix represented as array of vectors or double**.
+ * Note: Implementation adapted to take array of vectors for consistency.
  */
-double detrminant(double **matrix);
+double determinant(vector *matrix, int n);
 
-plain *getPlain(vector orthogonal_V, double *point);
+// --- Geometry Generation (Lines) ---
 
-plain *getPlain2Vector(vector v1, vector v2, double *p);
+line_equation *getLine(vector V, vector p);
 
-bool checkPointInPlain(plain plainCheck, double *p1);
+line_equation *getLine2Points(vector p1, vector p2);
 
-bool checkPlainParrallel(plain Plain1, plain Plain2);
+/** * @brief Finds intersection of two lines. Returns vector intersection or NULL. 
+ */
+vector getIntersection2Lines(line_equation *L1, line_equation *L2);
 
-plain *getPlain3point(double *p1, double *p2, double *p3);
+// --- Geometry Generation (Plains) ---
 
-double distPointPlain(double *p, plain Plain);
+/** * @brief Construct plane from normal and point. 
+ */
+plain *getPlain(vector orthogonal_V, vector point);
 
-bool checkPointInPlainVect(plainVectoric Plain , double *p);
+/** * @brief Construct plane from two vectors and a point. 
+ */
+plain *getPlain2Vector(vector v1, vector v2, vector p);
 
-bool parrallelPlains(plain Plain1, plain Plain2);
+/** * @brief Construct plane from 3 points. 
+ */
+plain *getPlain3point(vector p1, vector p2, vector p3);
 
-#endif
+// --- Geometry Checks (Plains) ---
+
+bool checkPointInPlain(plain p, vector point);
+
+bool checkPlainParallel(plain p1, plain p2);
+
+double distPointPlain(vector p, plain plain_obj);
+
+// Utilities
+void printVector(vector v);
+void printSet(vectorSet set);
+
+#endif // VECTOROPS_H

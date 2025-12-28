@@ -6,7 +6,8 @@
 # Compiler and Flags
 CC = gcc
 CFLAGS = -Wall -Wextra -std=c99 -pedantic \
-         -ItestLIB -IcsvLIB -ImodularLIB -IbitOperation -IvectorLIB -IlimitsLib -Iuniversal \
+         -ItestLIB -IcsvLIB -ImodularLIB -ImatriceLib\
+		 -IvectorLIB -Iuniversal -Icalculus\
          -MMD -MP
 LDFLAGS = -lm
 
@@ -16,7 +17,7 @@ BUILD_DIR = build
 # --- SOURCE CONFIGURATION ---
 
 # 1. Directories to search
-SRC_DIRS = . vectorLIB csvLIB universal modularLIB testLIB bitOperation
+SRC_DIRS = . vectorLIB csvLIB universal modularLIB testLIB matriceLib calculus
 
 # 2. Find ALL .c files in those directories
 ALL_SRCS := $(foreach dir,$(SRC_DIRS),$(wildcard $(dir)/*.c))

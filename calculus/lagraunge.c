@@ -1,9 +1,9 @@
-#include <stdio.h>
-#include <math.h>
+#include "calculus.h"
 
 #define DELTA 1e-12
 
-double L(double (*target)(double,double), double (*constraint)(double,double),double x, double y, double l){
+double L(double (*target)(double,double), double (*constraint)(double,double),
+         double x, double y, double l){
     return target(x,y) - l*constraint(x,y);
 }
 
